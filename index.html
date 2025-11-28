@@ -198,6 +198,7 @@
         const Paperclip = (props) => (
             <Icon {...props}>
                 <path d="M21.44 14.88a1 1 0 0 0-.58-.58l-8.2-8.2a4 4 0 0 0-5.66 5.66l6.4 6.4a2 2 0 0 0 2.83 0" />
+                <path d="M7.4 17.6 14.5 10.5" />
             </Icon>
         );
         const UploadCloud = (props) => (
@@ -259,7 +260,14 @@
 
         // --- Gemini API Helper (for text generation) ---
         const generateGeminiContent = async (prompt) => {
-          const apiKey = ""; 
+          // =================================================================================
+          // API Key Configuration:
+          // If running this file outside the Canvas environment (e.g., GitHub Pages),
+          // you MUST replace the empty string below with your actual Gemini API Key.
+          // You can obtain a key from Google AI Studio.
+          // Example: const apiKey = "AIzaSy...your-key-goes-here";
+          const apiKey = ""; // <-- REPLACE THIS EMPTY STRING FOR EXTERNAL USE
+          // =================================================================================
           const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
           
           const payload = {
@@ -287,7 +295,12 @@
 
         // --- Gemini API Helper (for structured AI Detection Simulation) ---
         const generateAiDetectionReport = async (taskTitle) => {
-          const apiKey = ""; 
+          // =================================================================================
+          // API Key Configuration:
+          // If running this file outside the Canvas environment (e.g., GitHub Pages),
+          // you MUST replace the empty string below with your actual Gemini API Key.
+          const apiKey = ""; // <-- REPLACE THIS EMPTY STRING FOR EXTERNAL USE
+          // =================================================================================
           const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
           
           const prompt = `
@@ -954,6 +967,7 @@
           const handleDeadlineChange = (e) => {
              onUpdateTask(task.id, { due: e.target.value });
           };
+
 
           return (
             <div className="bg-white h-full flex flex-col animate-in slide-in-from-right duration-300 relative z-50">
