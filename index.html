@@ -393,8 +393,8 @@
         // --- Mock Data ---
         const ALL_TEAM_MEMBERS = [
           { name: 'Shawn', role: 'Backend Dev', color: 'bg-blue-600' },
-          { name: 'Arya', role: 'UX Designer', color: 'bg-blue-500' },
-          { name: 'Leroy', role: 'Researcher', color: 'bg-blue-400' },
+          { name: 'Anya', role: 'UX Designer', color: 'bg-blue-500' },
+          { name: 'Lensy', role: 'Researcher', color: 'bg-blue-400' },
           { name: 'Gabriel', role: 'Frontend Dev', color: 'bg-red-500' },
         ];
 
@@ -410,9 +410,9 @@
             title: 'K-12 EdTech Research',
             members: ALL_TEAM_MEMBERS.map(m => m.name),
             tasks: [
-              { id: 1, title: 'Conduct user interviews', assignedTo: 'Arya', status: 'In Progress', due: getISODate(tomorrow), description: 'Interview 5 teachers from local schools.', submissions: [], attachments: [] },
+              { id: 1, title: 'Conduct user interviews', assignedTo: 'anya', status: 'In Progress', due: getISODate(tomorrow), description: 'Interview 5 teachers from local schools.', submissions: [], attachments: [] },
               { id: 2, title: 'Finalize database schema', assignedTo: 'Shawn', status: 'Done', due: getISODate(yesterday), description: 'Ensure all relations are 3NF.', submissions: [], attachments: [] },
-              { id: 3, title: 'Draft research paper', assignedTo: 'Leroy', status: 'Pending', due: getISODate(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 7)), description: 'Write the abstract and introduction.', submissions: [], attachments: [] },
+              { id: 3, title: 'Draft research paper', assignedTo: 'lensy', status: 'Pending', due: getISODate(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 7)), description: 'Write the abstract and introduction.', submissions: [], attachments: [] },
             ]
           }
         ];
@@ -494,8 +494,8 @@
               - Overall Progress: ${progress}%
               - Team Performance: ${JSON.stringify(projectMembersWithScores.map(m => ({name: m.name, completedTasks: m.completedCount, contributionShare: m.score})))}
               
-              Provide a brief, 2-sentence "Project Health Check". 
-              Acknowledge the current overall progress. Mention the ${laggingMember ? laggingMember.name : "highest contributor"} and suggest one specific action to maintain momentum or unblock work.
+              Provide a brief, "Project Health Check". 
+              Acknowledge the current overall progress. Mention the ${laggingMember ? laggingMember.name : "highest contributor"} and suggest one specific action to maintain momentum or unblock work. Don't make it too long
             `;
             const text = await generateGeminiContent(prompt);
             setInsight(text);
@@ -643,9 +643,9 @@
 
           const templates = [
             { id: 'research', title: 'Research Project', subtitle: 'Academic & Data', icon: FileText, color: 'bg-purple-50 text-purple-600 border-purple-100' },
-            { id: 'design', title: 'Design System', subtitle: 'UI Kit & Brand', icon: Palette, color: 'bg-pink-50 text-pink-600 border-pink-100' },
-            { id: 'dev', title: 'App Development', subtitle: 'Full Stack MVP', icon: Code, color: 'bg-blue-50 text-blue-600 border-blue-100' },
-            { id: 'launch', title: 'Product Launch', subtitle: 'Marketing & Events', icon: Briefcase, color: 'bg-orange-50 text-orange-600 border-orange-100' },
+            { id: 'design', title: 'Editing', subtitle: 'Video & Photo', icon: Palette, color: 'bg-pink-50 text-pink-600 border-pink-100' },
+            { id: 'dev', title: 'Presentation', subtitle: 'Designing', icon: Code, color: 'bg-blue-50 text-blue-600 border-blue-100' },
+            { id: 'launch', title: 'Product', subtitle: 'Marketing & Events', icon: Briefcase, color: 'bg-orange-50 text-orange-600 border-orange-100' },
           ];
 
           const handleTemplateClick = (template) => {
