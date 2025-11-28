@@ -1,1467 +1,465 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Project Pulse Dashboard</title>
-    
-    <!-- 1. Load Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- 2. Load React and ReactDOM CDNs -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    
-    <!-- 3. Load Babel CDN (to process JSX in the browser) -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    
-    <!-- Inter Font and Base Styles -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet">
-    <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            margin: 0;
-            padding: 0;
-            overflow-x: hidden;
-        }
-        #root {
-            min-height: 100vh;
-            display: flex;
-            justify-content: center;
-        }
-        .pb-safe {
-            padding-bottom: env(safe-area-inset-bottom);
-        }
-        .no-scrollbar::-webkit-scrollbar {
-            display: none;
-        }
-        .no-scrollbar {
-            -ms-overflow-style: none;
-            scrollbar-width: none;
-        }
-    </style>
-</head>
-<body>
-    <div id="root"></div>
+import React, { useState, useEffect } from 'react';
+import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, addDoc, updateDoc, onSnapshot, collection, query, serverTimestamp, orderBy, setLogLevel } from 'firebase/firestore';
+import { CheckSquare, LayoutDashboard, Timer, Plus, Clock, TrendingUp, BarChart2, User, Loader2 } from 'lucide-react';
 
-    <script type="text/babel">
-        // --- Single-File Component Definitions (Simulating Lucide Icons) ---
-        // Since we can't use 'lucide-react' import in a single HTML file, 
-        // we define the required icons as simple SVG React components here.
-        const Icon = ({ size = 20, className = '', strokeWidth = 2, children }) => (
-            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" className={className}>
-                {children}
-            </svg>
-        );
+// Global constants must be defined or accessed from window/env in a real environment
+const firebaseConfig = JSON.parse(window.__firebase_config || '{}');
+const appId = window.__app_id || 'default-app-id';
+const initialAuthToken = window.__initial_auth_token || null;
 
-        const LayoutDashboard = (props) => (
-            <Icon {...props}>
-                <rect x="3" y="3" width="7" height="9" rx="1" />
-                <rect x="14" y="3" width="7" height="5" rx="1" />
-                <rect x="14" y="12" width="7" height="9" rx="1" />
-                <rect x="3" y="16" width="7" height="5" rx="1" />
-            </Icon>
-        );
-        const CheckSquare = (props) => (
-            <Icon {...props}>
-                <polyline points="9 11 12 14 22 4" />
-                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-            </Icon>
-        );
-        const Timer = (props) => (
-            <Icon {...props}>
-                <line x1="10" y1="2" x2="14" y2="2" />
-                <line x1="12" y1="14" x2="12" y2="22" />
-                <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z" />
-            </Icon>
-        );
-        const Bell = (props) => (
-            <Icon {...props}>
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-            </Icon>
-        );
-        const Menu = (props) => (
-            <Icon {...props}>
-                <line x1="3" y1="12" x2="21" y2="12" />
-                <line x1="3" y1="6" x2="21" y2="6" />
-                <line x1="3" y1="18" x2="21" y2="18" />
-            </Icon>
-        );
-        const Play = (props) => (
-            <Icon {...props}>
-                <polygon points="5 3 19 12 5 21 5 3" />
-            </Icon>
-        );
-        const Pause = (props) => (
-            <Icon {...props}>
-                <rect x="6" y="4" width="4" height="16" />
-                <rect x="14" y="4" width="4" height="16" />
-            </Icon>
-        );
-        const RotateCcw = (props) => (
-            <Icon {...props}>
-                <path d="M3 2v6h6" />
-                <path d="M3 13a9 9 0 1 0 3-7.7L3 8" />
-            </Icon>
-        );
-        const ChevronRight = (props) => (
-            <Icon {...props}>
-                <polyline points="9 18 15 12 9 6" />
-            </Icon>
-        );
-        const ArrowLeft = (props) => (
-            <Icon {...props}>
-                <line x1="19" y1="12" x2="5" y2="12" />
-                <polyline points="12 19 5 12 12 5" />
-            </Icon>
-        );
-        const Palette = (props) => (
-            <Icon {...props}>
-                <path d="M17.5 10.7a7 7 0 1 0-7-7c.9 0 2 0 3.3.4C17.5 4 19 5.5 20.3 7c.4 1.3.4 2.4.4 3.3.8 0 1.5 0 2.2-.4.4-.2.8-.5 1.1-.9.3-.4.5-.8.5-1.3v-.1c0-2.4-1.9-4.3-4.3-4.3h-2.1" />
-                <circle cx="10" cy="10" r="1.5" />
-                <circle cx="15" cy="15" r="1.5" />
-                <circle cx="10" cy="15" r="1.5" />
-                <circle cx="15" cy="10" r="1.5" />
-                <path d="M5 21l-3 3 1.5-1.5 3-3" />
-                <path d="M21 5l3-3-1.5 1.5-3 3" />
-            </Icon>
-        );
-        const Code = (props) => (
-            <Icon {...props}>
-                <polyline points="16 18 22 12 16 6" />
-                <polyline points="8 6 2 12 8 18" />
-            </Icon>
-        );
-        const FileText = (props) => (
-            <Icon {...props}>
-                <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-                <polyline points="14 2 14 8 20 8" />
-                <line x1="16" y1="13" x2="8" y2="13" />
-                <line x1="16" y1="17" x2="8" y2="17" />
-                <line x1="10" y1="9" x2="8" y2="9" />
-            </Icon>
-        );
-        const Users = (props) => (
-            <Icon {...props}>
-                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                <circle cx="8.5" cy="7" r="4" />
-                <path d="M20 8v.5c0 .7-.1 1.4-.4 2.1l-.8 1.6" />
-                <path d="M23 18v2a4 4 0 0 1-4 4h-1" />
-                <circle cx="18" cy="12" r="3" />
-            </Icon>
-        );
-        const Plus = (props) => (
-            <Icon {...props}>
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
-            </Icon>
-        );
-        const Sparkles = (props) => (
-            <Icon {...props}>
-                <path d="M10 5a2 2 0 0 1 2 2 2 2 0 0 0 2 2 2 2 0 0 1 2 2 2 2 0 0 0 2 2 2 2 0 0 1 2 2 2 2 0 0 0 2 2" />
-                <path d="M10 5a2 2 0 0 1 2 2 2 2 0 0 0 2 2 2 2 0 0 1 2 2 2 2 0 0 0 2 2 2 2 0 0 1 2 2 2 2 0 0 0 2 2" transform="rotate(30 12 12)" />
-                <path d="M10 5a2 2 0 0 1 2 2 2 2 0 0 0 2 2 2 2 0 0 1 2 2 2 2 0 0 0 2 2 2 2 0 0 1 2 2 2 2 0 0 0 2 2" transform="rotate(60 12 12)" />
-            </Icon>
-        );
-        const Loader2 = (props) => (
-            <Icon {...props}>
-                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-            </Icon>
-        );
-        const X = (props) => (
-            <Icon {...props}>
-                <line x1="18" y1="6" x2="6" y2="18" />
-                <line x1="6" y1="6" x2="18" y2="18" />
-            </Icon>
-        );
-        const Briefcase = (props) => (
-            <Icon {...props}>
-                <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
-                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
-            </Icon>
-        );
-        const Trash2 = (props) => (
-            <Icon {...props}>
-                <path d="M3 6h18" />
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-                <path d="M10 11v6" />
-                <path d="M14 11v6" />
-                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-            </Icon>
-        );
-        const FolderOpen = (props) => (
-            <Icon {...props}>
-                <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h16z" />
-            </Icon>
-        );
-        const Paperclip = (props) => (
-            <Icon {...props}>
-                <path d="M21.44 14.88a1 1 0 0 0-.58-.58l-8.2-8.2a4 4 0 0 0-5.66 5.66l6.4 6.4a2 2 0 0 0 2.83 0" />
-                <path d="M7.4 17.6 14.5 10.5" />
-            </Icon>
-        );
-        const UploadCloud = (props) => (
-            <Icon {...props}>
-                <polyline points="16 16 12 12 8 16" />
-                <line x1="12" y1="12" x2="12" y2="21" />
-                <path d="M20.88 18.08A5 5 0 0 0 18 9h-1.24a6 6 0 0 0-10.36-4.65c-.06.07-.12.14-.17.21" />
-            </Icon>
-        );
-        const File = (props) => (
-            <Icon {...props}>
-                <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-                <polyline points="14 2 14 8 20 8" />
-            </Icon>
-        );
-        const Save = (props) => (
-            <Icon {...props}>
-                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                <polyline points="17 21 17 13 7 13 7 21" />
-                <polyline points="7 3 7 8 15 8" />
-            </Icon>
-        );
-        const Calendar = (props) => (
-            <Icon {...props}>
-                <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
-                <line x1="16" y1="2" x2="16" y2="6" />
-                <line x1="8" y1="2" x2="8" y2="6" />
-                <line x1="3" y1="10" x2="21" y2="10" />
-            </Icon>
-        );
-        
+// --- Task Management Components ---
 
-        const { useState, useEffect } = React;
-
-        // --- Date Utility Function ---
-        const formatDateForDisplay = (dateString) => {
-            if (!dateString) return 'No Deadline';
-            const date = new Date(dateString + 'T00:00:00'); 
-            if (isNaN(date)) return dateString;
-
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            const tomorrow = new Date(today);
-            tomorrow.setDate(today.getDate() + 1);
-            const yesterday = new Date(today);
-            yesterday.setDate(today.getDate() - 1);
-
-            const taskDate = new Date(date);
-            taskDate.setHours(0, 0, 0, 0);
-
-            if (taskDate.getTime() === today.getTime()) return 'Today';
-            if (taskDate.getTime() === tomorrow.getTime()) return 'Tomorrow';
-            if (taskDate.getTime() === yesterday.getTime()) return 'Yesterday';
-
-            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); 
-        };
-
-        const getISODate = (date) => date.toISOString().split('T')[0];
-
-        // --- Gemini API Helper (for text generation) ---
-        const generateGeminiContent = async (prompt) => {
-          // =================================================================================
-          // API Key Configuration:
-          // If running this file outside the Canvas environment (e.g., GitHub Pages),
-          // you MUST replace the empty string below with your actual Gemini API Key.
-          // You can obtain a key from Google AI Studio.
-          // Example: const apiKey = "AIzaSy...your-key-goes-here";
-          const apiKey = "AIzaSyA0PF10avWJaF4gYgTvAO_3WaXsw13mHfw"; // <-- REPLACE THIS EMPTY STRING FOR EXTERNAL USE
-          // =================================================================================
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-          
-          const payload = {
-            contents: [{ parts: [{ text: prompt }] }]
-          };
-
-          try {
-            const response = await fetch(url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
+const TaskItem = ({ task, db, userId }) => {
+    const toggleComplete = async () => {
+        if (!db || !userId) return;
+        const taskRef = doc(db, `artifacts/${appId}/users/${userId}/tasks/${task.id}`);
+        try {
+            await updateDoc(taskRef, {
+                isComplete: !task.isComplete,
+                completedAt: !task.isComplete ? serverTimestamp() : null
             });
-            
-            const data = await response.json();
-            if (data.error) {
-              console.error("API Error Response:", data.error.message);
-              return `Error: ${data.error.message}`;
-            }
-            return data.candidates?.[0]?.content?.parts?.[0]?.text || "No response generated.";
-          } catch (error) {
-            console.error("Gemini API Error:", error);
-            return "Sorry, I couldn't generate that right now. Check console for network errors.";
-          }
-        };
+        } catch (error) {
+            console.error("Error toggling task completion:", error);
+        }
+    };
 
-        // --- Gemini API Helper (for structured AI Detection Simulation) ---
-        const generateAiDetectionReport = async (taskTitle) => {
-          // =================================================================================
-          // API Key Configuration:
-          // If running this file outside the Canvas environment (e.g., GitHub Pages),
-          // you MUST replace the empty string below with your actual Gemini API Key.
-          const apiKey = ""; // <-- REPLACE THIS EMPTY STRING FOR EXTERNAL USE
-          // =================================================================================
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
-          
-          const prompt = `
-            Act as an AI content detection system. I need a simulated analysis for a file related to the task: "${taskTitle}". 
-            The file is a submission from the assigned team member.
-
-            Determine a plausible AI-generated percentage (0-100) and provide a 1-sentence summary of the finding.
-            For high percentages (>70), the summary should indicate high AI likelihood. For low percentages (<30), the summary should confirm high human originality. For mid-range, use neutral language.
-            
-            Return ONLY JSON.
-          `;
-          
-          const schema = {
-            type: "OBJECT",
-            properties: {
-                "ai_percentage": { "type": "NUMBER", "description": "A plausible percentage between 0 and 100." },
-                "summary": { "type": "STRING", "description": "A one-sentence summary of the AI likelihood." }
-            },
-            required: ["ai_percentage", "summary"]
-          };
-          
-          const payload = {
-              contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: {
-                  responseMimeType: "application/json",
-                  responseSchema: schema
-              }
-          };
-
-          try {
-            const response = await fetch(url, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payload)
-            });
-            
-            const data = await response.json();
-            if (data.error) throw new Error(data.error.message);
-            
-            const jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (jsonText) {
-                // Safely extract and parse JSON string
-                const cleanJsonText = jsonText.replace(/```json/g, '').replace(/```/g, '').trim();
-                return JSON.parse(cleanJsonText);
-            }
-            return { ai_percentage: -1, summary: "Could not parse API response." };
-          } catch (error) {
-            console.error("AI Detection API Error:", error);
-            return { ai_percentage: -1, summary: "Error communicating with AI detection service." };
-          }
-        };
-
-        // --- Mock Data ---
-        const ALL_TEAM_MEMBERS = [
-          { name: 'Shawn', role: 'Backend Dev', color: 'bg-blue-600' },
-          { name: 'Arya', role: 'UX Designer', color: 'bg-blue-500' },
-          { name: 'Leroy', role: 'Researcher', color: 'bg-blue-400' },
-          { name: 'Gabriel', role: 'Frontend Dev', color: 'bg-red-500' },
-        ];
-
-        const today = new Date();
-        const tomorrow = new Date(today);
-        tomorrow.setDate(today.getDate() + 1);
-        const yesterday = new Date(today);
-        yesterday.setDate(today.getDate() - 1);
-
-        const INITIAL_PROJECTS = [
-          {
-            id: 'proj_1',
-            title: 'K-12 EdTech Research',
-            members: ALL_TEAM_MEMBERS.map(m => m.name),
-            tasks: [
-              { id: 1, title: 'Conduct user interviews', assignedTo: 'Arya', status: 'In Progress', due: getISODate(tomorrow), description: 'Interview 5 teachers from local schools.', submissions: [], attachments: [] },
-              { id: 2, title: 'Finalize database schema', assignedTo: 'Shawn', status: 'Done', due: getISODate(yesterday), description: 'Ensure all relations are 3NF.', submissions: [], attachments: [] },
-              { id: 3, title: 'Draft research paper', assignedTo: 'Leroy', status: 'Pending', due: getISODate(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 7)), description: 'Write the abstract and introduction.', submissions: [], attachments: [] },
-            ]
-          }
-        ];
-        
-        // --- Components ---
-
-        const CircularProgress = ({ percentage }) => {
-          const radius = 55;
-          const circumference = 2 * Math.PI * radius;
-          const strokeDashoffset = circumference - (percentage / 100) * circumference;
-
-          return (
-            <div className="relative flex items-center justify-center">
-              <svg className="transform -rotate-90 w-40 h-40">
-                <circle
-                  className="text-blue-100"
-                  strokeWidth="12"
-                  stroke="currentColor"
-                  fill="transparent"
-                  r={radius}
-                  cx="80"
-                  cy="80"
-                />
-                <circle
-                  className="text-blue-600 transition-all duration-1000 ease-out"
-                  strokeWidth="12"
-                  strokeDasharray={circumference}
-                  strokeDashoffset={strokeDashoffset}
-                  strokeLinecap="round"
-                  stroke="currentColor"
-                  fill="transparent"
-                  r={radius}
-                  cx="80"
-                  cy="80"
-                />
-              </svg>
-              <div className="absolute text-center">
-                <span className="text-4xl font-bold text-blue-600">{percentage}%</span>
-                <div className="text-xs text-gray-500 font-semibold mt-1">TOTAL COMPLETED</div>
-              </div>
-            </div>
-          );
-        };
-
-        const AnalyticsView = ({ project }) => {
-          const [insight, setInsight] = useState(null);
-          const [loading, setLoading] = useState(false);
-
-          const completedTasksByMember = project.tasks
-            .filter(t => t.status === 'Done')
-            .reduce((acc, task) => {
-              acc[task.assignedTo] = (acc[task.assignedTo] || 0) + 1;
-              return acc;
-            }, {});
-
-          const totalCompletedTasks = Object.values(completedTasksByMember).reduce((sum, count) => sum + count, 0);
-
-          const projectMembersWithScores = ALL_TEAM_MEMBERS
-            .filter(m => project.members.includes(m.name))
-            .map(member => {
-              const completedCount = completedTasksByMember[member.name] || 0;
-              const score = totalCompletedTasks === 0 
-                ? 0 
-                : Math.round((completedCount / totalCompletedTasks) * 100);
-              return { ...member, score, completedCount };
-            });
-
-          const completedTasks = project.tasks.filter(t => t.status === 'Done').length;
-          const totalTasks = project.tasks.length;
-          const progress = totalTasks === 0 ? 0 : Math.round((completedTasks / totalTasks) * 100);
-
-          const handleGenerateInsight = async () => {
-            setLoading(true);
-            
-            const laggingMember = projectMembersWithScores.find(m => m.completedCount === 0);
-            
-            const prompt = `
-              You are a senior project manager for the project "${project.title}". Analyze this team status:
-              - Overall Progress: ${progress}%
-              - Team Performance: ${JSON.stringify(projectMembersWithScores.map(m => ({name: m.name, completedTasks: m.completedCount, contributionShare: m.score})))}
-              
-              Provide a brief, 2-sentence "Project Health Check". 
-              Acknowledge the current overall progress. Mention the ${laggingMember ? laggingMember.name : "highest contributor"} and suggest one specific action to maintain momentum or unblock work.
-            `;
-            const text = await generateGeminiContent(prompt);
-            setInsight(text);
-            setLoading(false);
-          };
-
-          return (
-            <div className="space-y-4 p-4 pb-24 animate-in fade-in duration-500">
-              <div className="flex justify-between items-end mb-2">
-                 <h2 className="text-sm text-gray-500 font-medium">Status as of October 2025</h2>
-              </div>
-
-              {insight ? (
-                <div className="bg-gradient-to-r from-indigo-50 to-blue-50 p-4 rounded-2xl border border-blue-100 relative animate-in slide-in-from-top duration-300">
-                  <div className="flex items-start gap-3">
-                    <div className="bg-white p-2 rounded-full shadow-sm">
-                      <Sparkles size={16} className="text-blue-600" />
-                    </div>
-                    <div>
-                      <h4 className="text-sm font-bold text-blue-900 mb-1">AI Project Insight</h4>
-                      <p className="text-xs text-blue-800 leading-relaxed">{insight}</p>
-                    </div>
-                    <button onClick={() => setInsight(null)} className="absolute top-2 right-2 text-blue-300 hover:text-blue-500">
-                      <X size={16} />
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button 
-                  onClick={handleGenerateInsight}
-                  disabled={loading}
-                  className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-3 rounded-xl shadow-md flex items-center justify-center gap-2 text-sm font-bold active:scale-[0.99] transition-all"
-                >
-                  {loading ? <Loader2 className="animate-spin" size={18} /> : <Sparkles size={18} />}
-                  {loading ? 'Analyzing Data...' : 'Generate AI Health Report'}
-                </button>
-              )}
-
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                <h3 className="text-gray-800 font-bold text-base mb-6">Overall Project Progress</h3>
-                <div className="flex flex-col items-center justify-center mb-4">
-                  <CircularProgress percentage={progress} />
-                </div>
-                <p className="text-center text-xs text-gray-400 mt-2">
-                  Based on weighted effort scores of completed tasks.
+    return (
+        <div className={`flex items-center p-3 mb-2 rounded-xl shadow-sm transition duration-150 ${task.isComplete ? 'bg-green-50/70 opacity-70' : 'bg-white hover:bg-gray-50'}`}>
+            <input 
+                type="checkbox" 
+                checked={task.isComplete} 
+                onChange={toggleComplete}
+                className="w-5 h-5 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 mr-4 cursor-pointer"
+            />
+            <div className="flex-1">
+                <p className={`font-medium text-sm ${task.isComplete ? 'line-through text-gray-500' : 'text-gray-800'}`}>
+                    {task.title}
                 </p>
-              </div>
-
-              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-                <div className="flex justify-between items-start mb-6">
-                  <h3 className="text-gray-800 font-bold text-base leading-tight">
-                    Individual Contribution Share <br/>
-                    <span className="text-gray-500 font-normal text-sm">(Completed Tasks)</span>
-                  </h3>
-                </div>
-                
-                <div className="space-y-5">
-                  {projectMembersWithScores.map((member) => (
-                    <div key={member.name}>
-                      <div className="flex justify-between text-xs font-semibold text-gray-600 mb-1.5">
-                        <span>{member.name}</span>
-                        <span>{member.score}% ({member.completedCount} tasks)</span>
-                      </div>
-                      <div className="w-full bg-gray-100 rounded-full h-2">
-                        <div 
-                          className={`h-2.5 rounded-full ${member.color} transition-all duration-500`} 
-                          style={{ width: `${Math.max(member.score, 5)}%` }} 
-                        ></div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+                <p className="text-xs text-gray-400">
+                    {task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'No due date'}
+                </p>
             </div>
-          );
-        };
+        </div>
+    );
+};
 
-        const ProjectsListView = ({ projects, onSelectProject, onCreateNew }) => {
-          return (
-            <div className="bg-white h-full flex flex-col animate-in slide-in-from-bottom duration-300 relative z-50">
-               <div className="p-6 pt-12 pb-4 border-b border-gray-100 flex items-center gap-4 bg-white sticky top-0">
-                 <div className="bg-blue-100 p-2 rounded-full">
-                    <FolderOpen className="text-blue-600" size={24} />
-                 </div>
-                 <h2 className="text-xl font-bold text-gray-900">My Projects</h2>
-              </div>
+const TasksTab = ({ db, userId }) => {
+    const [tasks, setTasks] = useState([]);
+    const [newTaskTitle, setNewTaskTitle] = useState('');
+    const [isLoading, setIsLoading] = useState(true);
 
-              <div className="p-6 flex-1 overflow-y-auto space-y-4">
-                 {projects.map(project => {
-                    const completed = project.tasks.filter(t => t.status === 'Done').length;
-                    const total = project.tasks.length;
-                    const percent = total === 0 ? 0 : Math.round((completed / total) * 100);
-                    
-                    return (
-                      <button 
-                        key={project.id}
-                        onClick={() => onSelectProject(project.id)}
-                        className="w-full bg-white p-5 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-blue-200 transition-all text-left group"
-                      >
-                        <div className="flex justify-between items-start mb-3">
-                           <h3 className="text-lg font-bold text-gray-800 group-hover:text-blue-600 transition-colors">{project.title}</h3>
-                           <span className="bg-blue-50 text-blue-700 text-[10px] font-bold px-2 py-1 rounded-full">ACTIVE</span>
-                        </div>
-                        
-                        <div className="mb-4">
-                          <div className="flex justify-between text-xs text-gray-500 mb-1.5">
-                            <span>Progress</span>
-                            <span className="font-bold">{percent}%</span>
-                          </div>
-                          <div className="w-full bg-gray-100 rounded-full h-2">
-                            <div className="h-2 rounded-full bg-blue-500" style={{ width: `${percent}%` }}></div>
-                          </div>
-                        </div>
+    useEffect(() => {
+        if (!db || !userId) return;
 
-                        <div className="flex items-center gap-4 text-xs text-gray-400">
-                           <div className="flex items-center gap-1">
-                              <CheckSquare size={14} /> {total} Tasks
-                           </div>
-                           <div className="flex items-center gap-1">
-                              <Users size={14} /> {project.members.length} Members
-                           </div>
-                        </div>
-                      </button>
-                    );
-                 })}
+        // Note: For real-world use, orderBy might require an index on 'createdAt'.
+        // For development, we'll keep it simple and assume the index exists or data volume is small.
+        const q = query(
+            collection(db, `artifacts/${appId}/users/${userId}/tasks`),
+            orderBy('createdAt', 'desc')
+        );
 
-                 <button 
-                    onClick={onCreateNew}
-                    className="w-full p-5 rounded-2xl border-2 border-dashed border-gray-200 text-gray-400 font-bold flex flex-col items-center justify-center gap-2 hover:bg-gray-50 hover:border-gray-300 transition-all min-h-[120px]"
-                 >
-                    <Plus size={24} />
-                    Create New Project
-                 </button>
-              </div>
-            </div>
-          );
-        };
-
-        const NewProjectView = ({ onBack, onCreateProject }) => {
-          const [selectedTemplate, setSelectedTemplate] = useState(null);
-          const [projectTitle, setProjectTitle] = useState('');
-          const [selectedMembers, setSelectedMembers] = useState(ALL_TEAM_MEMBERS.map(m => m.name));
-          const [isAiGenerating, setIsAiGenerating] = useState(false);
-          const [generatedTasks, setGeneratedTasks] = useState([]);
-
-          const templates = [
-            { id: 'research', title: 'Research Project', subtitle: 'Academic & Data', icon: FileText, color: 'bg-purple-50 text-purple-600 border-purple-100' },
-            { id: 'design', title: 'Design System', subtitle: 'UI Kit & Brand', icon: Palette, color: 'bg-pink-50 text-pink-600 border-pink-100' },
-            { id: 'dev', title: 'App Development', subtitle: 'Full Stack MVP', icon: Code, color: 'bg-blue-50 text-blue-600 border-blue-100' },
-            { id: 'launch', title: 'Product Launch', subtitle: 'Marketing & Events', icon: Briefcase, color: 'bg-orange-50 text-orange-600 border-orange-100' },
-          ];
-
-          const handleTemplateClick = (template) => {
-            setSelectedTemplate(template);
-            setProjectTitle(template.type === 'custom' ? '' : `New ${template.title}`);
-            setGeneratedTasks([]);
-          };
-
-          const handleToggleMember = (name) => {
-            setSelectedMembers(prev => 
-              prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]
-            );
-          };
-          
-          const selectedMemberRoles = ALL_TEAM_MEMBERS
-            .filter(m => selectedMembers.includes(m.name))
-            .map(m => `- ${m.name} (${m.role})`).join('\n');
-
-          const handleGeneratePlan = async () => {
-            if (!projectTitle || selectedMembers.length === 0) return;
-            
-            setIsAiGenerating(true);
-            
-            let baseTaskInstruction = '';
-            const numTasks = 7;
-            
-            if (selectedTemplate.id === 'research') {
-                baseTaskInstruction = `
-                  Generate exactly ${numTasks} tasks for an academic research project titled "${projectTitle}".
-                  The tasks MUST be core academic steps like: "Write Introduction", "Review Literature (RRL)", "Design Methodology", "Data Collection", "Data Analysis", "Write Results", and "Write Conclusion".
-                `;
-            } else {
-                baseTaskInstruction = `
-                  Generate exactly ${numTasks} high-level tasks for a ${selectedTemplate.title} project titled "${projectTitle}".
-                `;
-            }
-
-            const prompt = `
-              Act as an experienced project planner. Use clear, professional language.
-
-              ${baseTaskInstruction}
-
-              IMPORTANT: You must assign each task to exactly ONE person from this list of AVAILABLE team members:
-              ${selectedMemberRoles}
-
-              VERY IMPORTANT:
-              1. Keep task titles extremely short (max 5 words).
-              2. Keep the task description simple and clear.
-              3. ONLY use names from the list provided.
-
-              Return ONLY JSON:
-              {
-                "tasks": [
-                  { "title": "Short Title", "assignedTo": "Name", "description": "Simple and clear explanation" }
-                ]
-              }
-            `;
-
-            try {
-                const textResponse = await generateGeminiContent(prompt);
-                const jsonString = textResponse.replace(/```json/g, '').replace(/```/g, '').trim();
-                const data = JSON.parse(jsonString);
-                setGeneratedTasks(data.tasks || []);
-            } catch (e) {
-                console.error("AI Error", e);
-                setGeneratedTasks([]);
-            }
-            setIsAiGenerating(false);
-          };
-
-          const handleCreateProject = () => {
-            onCreateProject(projectTitle, generatedTasks, selectedMembers);
-          }
-
-          if (!selectedTemplate) {
-            return (
-              <div className="bg-white h-full flex flex-col animate-in slide-in-from-bottom duration-300 relative z-50">
-                <div className="p-6 pt-12 pb-4 border-b border-gray-100 flex items-center gap-4 bg-white sticky top-0">
-                   <button onClick={onBack} className="p-2 -ml-2 hover:bg-gray-50 rounded-full transition-colors">
-                     <ArrowLeft className="text-gray-700" size={24} />
-                   </button>
-                   <h2 className="text-xl font-bold text-gray-900">Start New Project</h2>
-                </div>
-                
-                <div className="p-6 flex-1 overflow-y-auto">
-                  <h3 className="text-sm uppercase tracking-wider text-gray-500 font-bold mb-6">Select Project Type</h3>
-                  
-                  <div className="grid grid-cols-2 gap-4 mb-8">
-                     {templates.map(t => (
-                        <button 
-                          key={t.id} 
-                          onClick={() => handleTemplateClick(t)} 
-                          className={`${t.color} border p-5 rounded-2xl flex flex-col items-start gap-3 h-36 transition-all active:scale-95 hover:shadow-md`}
-                        >
-                           <div className="p-2 bg-white/60 rounded-xl backdrop-blur-sm">
-                              <t.icon size={24} />
-                           </div>
-                           <div className="mt-auto text-left">
-                              <span className="block font-bold text-lg leading-tight">{t.title}</span>
-                              <span className="text-[10px] opacity-80 font-medium">{t.subtitle}</span>
-                           </div>
-                        </button>
-                     ))}
-                  </div>
-
-                  <div className="relative flex py-2 items-center">
-                      <div className="flex-grow border-t border-gray-200"></div>
-                      <span className="flex-shrink-0 mx-4 text-gray-400 text-xs font-medium">OR CUSTOM</span>
-                      <div className="flex-grow border-t border-gray-200"></div>
-                  </div>
-
-                  <button 
-                    onClick={() => handleTemplateClick({ title: 'Custom Project', id: 'custom' })} 
-                    className="w-full mt-6 py-4 bg-gray-900 text-white rounded-xl font-bold shadow-xl shadow-gray-200 active:bg-gray-800 active:scale-[0.99] transition-all flex items-center justify-center gap-3"
-                  >
-                     <Plus size={20} className="text-gray-400" /> 
-                     <span>Create Custom Project</span>
-                  </button>
-                </div>
-              </div>
-            );
-          }
-
-          return (
-            <div className="bg-white h-full flex flex-col animate-in slide-in-from-right duration-300 relative z-50">
-               <div className="p-6 pt-12 pb-4 border-b border-gray-100 flex items-center gap-4 bg-white sticky top-0">
-                 <button onClick={() => setSelectedTemplate(null)} className="p-2 -ml-2 hover:bg-gray-50 rounded-full transition-colors">
-                   <ArrowLeft className="text-gray-700" size={24} />
-                 </button>
-                 <h2 className="text-xl font-bold text-gray-900">Project Details</h2>
-              </div>
-
-              <div className="p-6 flex-1 overflow-y-auto space-y-6">
-                <div>
-                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Project Name</label>
-                  <input 
-                    type="text" 
-                    value={projectTitle}
-                    onChange={(e) => setProjectTitle(e.target.value)}
-                    placeholder='e.g., "History Fair Presentation"'
-                    className="w-full text-2xl font-bold text-gray-800 border-b-2 border-gray-100 pb-2 focus:outline-none focus:border-blue-500 transition-colors"
-                  />
-                </div>
-
-                <div>
-                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">
-                      <Users size={14} className="inline-block mr-1 translate-y-[-1px]" /> Select Team Members ({selectedMembers.length})
-                    </label>
-                    <div className="space-y-2">
-                        {ALL_TEAM_MEMBERS.map(member => (
-                            <button
-                                key={member.name}
-                                onClick={() => handleToggleMember(member.name)}
-                                className={`flex items-center justify-between w-full p-3 rounded-xl border transition-all ${
-                                    selectedMembers.includes(member.name) 
-                                        ? 'border-blue-500 bg-blue-50' 
-                                        : 'border-gray-100 bg-white hover:border-gray-200'
-                                }`}
-                            >
-                                <div className="flex items-center gap-3">
-                                    <div className={`w-8 h-8 rounded-full ${member.color} flex items-center justify-center text-white text-xs font-bold`}>
-                                        {member.name[0]}
-                                    </div>
-                                    <div className="text-left">
-                                        <div className="text-sm font-bold text-gray-800">{member.name}</div>
-                                        <div className="text-[10px] text-gray-400">{member.role}</div>
-                                    </div>
-                                </div>
-                                {selectedMembers.includes(member.name) && <CheckSquare size={16} className="text-blue-500" />}
-                            </button>
-                        ))}
-                    </div>
-                    {selectedMembers.length === 0 && (
-                        <p className="text-red-500 text-xs mt-2 font-medium">Please select at least one member to assign tasks.</p>
-                    )}
-                </div>
-
-                <div>
-                  <div className="flex justify-between items-end mb-2">
-                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider">Initial Tasks (7 Key Tasks)</label>
-                    <button 
-                      onClick={handleGeneratePlan}
-                      disabled={!projectTitle || isAiGenerating || selectedMembers.length === 0}
-                      className="text-xs font-bold bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-lg flex items-center gap-2 hover:bg-indigo-100 transition-colors disabled:opacity-50"
-                    >
-                      {isAiGenerating ? <Loader2 className="animate-spin" size={14} /> : <Sparkles size={14} />}
-                      {isAiGenerating ? 'Thinking...' : 'Generate Plan'}
-                    </button>
-                  </div>
-
-                  {generatedTasks.length > 0 ? (
-                    <div className="space-y-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                      {generatedTasks.map((task, idx) => (
-                        <div key={idx} className="bg-gray-50 p-3 rounded-xl border border-gray-100 flex justify-between items-center">
-                           <div>
-                             <div className="text-sm font-bold text-gray-800">{task.title}</div>
-                             <div className="text-[10px] text-gray-500">Assigned to: {task.assignedTo}</div>
-                           </div>
-                           <CheckSquare size={16} className="text-gray-300" />
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="border-2 border-dashed border-gray-100 rounded-xl p-6 text-center">
-                       <p className="text-xs text-gray-400">No tasks generated yet.</p>
-                       <p className="text-xs text-gray-400 mt-1">Use the button above to let AI plan for you.</p>
-                    </div>
-                  )}
-                </div>
-
-              </div>
-
-              <div className="p-6 border-t border-gray-100 bg-white">
-                <button 
-                  onClick={handleCreateProject}
-                  disabled={!projectTitle || selectedMembers.length === 0}
-                  className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-200 active:scale-[0.99] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-2"
-                >
-                  Create Project {generatedTasks.length > 0 && `& ${generatedTasks.length} Tasks`}
-                </button>
-              </div>
-            </div>
-          );
-        };
-
-        const SimpleNewTaskView = ({ onBack, onAddTask, projectMembers }) => {
-          const [title, setTitle] = useState('');
-          const [description, setDescription] = useState('');
-          const [assignee, setAssignee] = useState(projectMembers[0]?.name || 'Unassigned');
-          const [deadline, setDeadline] = useState('');
-
-          const availableMembers = ALL_TEAM_MEMBERS.filter(m => projectMembers.includes(m.name));
-
-          return (
-            <div className="bg-white h-full flex flex-col animate-in slide-in-from-bottom duration-300 relative z-50">
-               <div className="p-6 pt-12 pb-4 border-b border-gray-100 flex items-center gap-4 bg-white sticky top-0">
-                 <button onClick={onBack} className="p-2 -ml-2 hover:bg-gray-50 rounded-full transition-colors">
-                   <ArrowLeft className="text-gray-700" size={24} />
-                 </button>
-                 <h2 className="text-xl font-bold text-gray-900">New Task</h2>
-              </div>
-
-              <div className="p-6 flex-1 space-y-6 overflow-y-auto">
-                 <div>
-                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Task Name</label>
-                    <input 
-                      type="text" 
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      placeholder="e.g., Update Documentation"
-                      autoFocus
-                      className="w-full text-lg font-medium text-gray-800 border-b-2 border-gray-100 pb-2 focus:outline-none focus:border-blue-500 transition-colors"
-                    />
-                 </div>
-                
-                 <div>
-                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1">
-                       <Calendar size={14}/> DEADLINE
-                    </label>
-                    <input 
-                      type="date"
-                      value={deadline}
-                      onChange={(e) => setDeadline(e.target.value)}
-                      className="w-full bg-gray-50 p-3 rounded-xl text-sm text-gray-600 border border-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                    />
-                 </div>
-
-                 <div>
-                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Description</label>
-                    <textarea 
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      placeholder="Add details, requirements, or notes..."
-                      className="w-full bg-gray-50 p-4 rounded-xl text-sm text-gray-600 min-h-[100px] focus:outline-none focus:ring-2 focus:ring-blue-100"
-                    />
-                 </div>
-
-                 <div>
-                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Assign To</label>
-                    <div className="grid grid-cols-1 gap-2">
-                      {availableMembers.map(member => (
-                        <button
-                          key={member.name}
-                          onClick={() => setAssignee(member.name)}
-                          className={`flex items-center justify-between p-3 rounded-xl border transition-all ${assignee === member.name ? 'border-blue-500 bg-blue-50' : 'border-gray-100 bg-white hover:border-gray-200'}`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-full ${member.color} flex items-center justify-center text-white text-xs font-bold`}>
-                              {member.name[0]}
-                            </div>
-                            <div className="text-left">
-                              <div className="text-sm font-bold text-gray-800">{member.name}</div>
-                              <div className="text-[10px] text-gray-400">{member.role}</div>
-                            </div>
-                          </div>
-                          {assignee === member.name && <div className="w-4 h-4 bg-blue-500 rounded-full"></div>}
-                        </button>
-                      ))}
-                    </div>
-                 </div>
-              </div>
-
-              <div className="p-6 border-t border-gray-100 bg-white">
-                <button 
-                  onClick={() => onAddTask(title, assignee, description, deadline)}
-                  disabled={!title}
-                  className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-200 active:scale-[0.99] transition-all disabled:opacity-50"
-                >
-                  Add Task
-                </button>
-              </div>
-            </div>
-          );
-        };
-
-        const TaskDetailView = ({ task, onBack, onUpdateTask, onDeleteTask, projectMembers }) => {
-          const [notes, setNotes] = useState('');
-          const [isUploading, setIsUploading] = useState(false);
-          const [aiDetectionResult, setAiDetectionResult] = useState(null);
-          const [isCheckingAi, setIsCheckingAi] = useState(false);
-
-          const availableMembers = ALL_TEAM_MEMBERS.filter(m => projectMembers.includes(m.name));
-
-          const handleUpload = () => {
-            setIsUploading(true);
-            setTimeout(() => {
-              const newFile = { name: `Report_Draft_v${task.attachments.length + 1}.pdf`, size: '2.4 MB' };
-              onUpdateTask(task.id, { attachments: [...task.attachments, newFile] });
-              setIsUploading(false);
-            }, 1500);
-          };
-
-          const handleAiCheck = async () => {
-            if (isCheckingAi) return;
-            setIsCheckingAi(true);
-            setAiDetectionResult(null);
-
-            const result = await generateAiDetectionReport(task.title);
-            setAiDetectionResult(result);
-            setIsCheckingAi(false);
-          };
-
-          const handleAssigneeChange = (name) => {
-             onUpdateTask(task.id, { assignedTo: name });
-          };
-          
-          const handleToggleStatus = () => {
-             const newStatus = task.status === 'Done' ? 'Pending' : 'Done';
-             onUpdateTask(task.id, { status: newStatus });
-          };
-          
-          const handleSaveDescription = (e) => {
-            onUpdateTask(task.id, { description: e.target.value });
-          };
-
-          const handleDeadlineChange = (e) => {
-             onUpdateTask(task.id, { due: e.target.value });
-          };
-
-
-          return (
-            <div className="bg-white h-full flex flex-col animate-in slide-in-from-right duration-300 relative z-50">
-               <div className="p-6 pt-12 pb-4 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0">
-                 <div className="flex items-center gap-4">
-                   <button onClick={onBack} className="p-2 -ml-2 hover:bg-gray-50 rounded-full transition-colors">
-                     <ArrowLeft className="text-gray-700" size={24} />
-                   </button>
-                 </div>
-                 <button 
-                   onClick={() => onDeleteTask(task.id)}
-                   className="p-2 text-red-400 hover:bg-red-50 rounded-full transition-colors"
-                 >
-                   <Trash2 size={20} />
-                 </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-6 space-y-8">
-                <div>
-                   <div className="flex items-center justify-between mb-3">
-                      <span className={`px-3 py-1 rounded-full text-xs font-bold ${task.status === 'Done' ? 'bg-green-100 text-green-600' : 'bg-blue-100 text-blue-600'}`}>
-                        {task.status}
-                      </span>
-                      <button 
-                          onClick={handleToggleStatus}
-                          className={`text-xs font-bold px-3 py-1 rounded-full border transition-all ${task.status === 'Done' ? 'bg-white border-green-500 text-green-600 hover:bg-green-50' : 'bg-blue-600 text-white hover:bg-blue-700'}`}
-                      >
-                          {task.status === 'Done' ? 'Mark as Pending' : 'Mark as Done'}
-                      </button>
-                   </div>
-                   <h1 className="text-2xl font-bold text-gray-900 leading-tight">{task.title}</h1>
-                   
-                   <div className="mt-3">
-                      <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1 flex items-center gap-1">
-                         <Calendar size={14}/> Change Deadline
-                      </label>
-                      <input
-                          type="date"
-                          value={task.due || ''}
-                          onChange={handleDeadlineChange}
-                          className="bg-white border border-gray-200 p-2 rounded-lg text-sm font-medium focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all"
-                      />
-                      <span className="text-xs text-gray-500 font-medium ml-3">
-                         Currently set to: <span className='font-bold text-gray-700'>{formatDateForDisplay(task.due)}</span>
-                      </span>
-                   </div>
-                </div>
-
-                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
-                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">Change Assignment (Leader View)</label>
-                   <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
-                      {availableMembers.map(member => (
-                        <button
-                           key={member.name}
-                           onClick={() => handleAssigneeChange(member.name)}
-                           className={`flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded-full border transition-all ${task.assignedTo === member.name ? 'bg-white border-blue-500 shadow-sm' : 'border-transparent hover:bg-white'}`}
-                        >
-                           <div className={`w-6 h-6 rounded-full ${member.color} flex items-center justify-center text-white text-[10px] font-bold`}>
-                              {member.name[0]}
-                           </div>
-                           <span className={`text-xs font-bold ${task.assignedTo === member.name ? 'text-gray-900' : 'text-gray-400'}`}>{member.name}</span>
-                        </button>
-                      ))}
-                   </div>
-                </div>
-
-                <div>
-                   <h3 className="text-sm font-bold text-gray-900 mb-2 flex items-center gap-2">
-                     <FileText size={16} className="text-blue-500" /> Task Description
-                   </h3>
-                   <textarea
-                     defaultValue={task.description}
-                     onBlur={handleSaveDescription}
-                     rows={4}
-                     placeholder="Add or edit the description here..."
-                     className="w-full text-sm text-gray-600 leading-relaxed bg-white border border-gray-200 p-4 rounded-xl focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-all"
-                   />
-                   <p className="text-[10px] text-gray-400 mt-1">Tap outside the box to save changes (Leader/Creator feature).</p>
-                </div>
-
-                <div>
-                    <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-                      <Sparkles size={16} className="text-indigo-500" /> AI Content Checker
-                    </h3>
-                    
-                    {aiDetectionResult && aiDetectionResult.ai_percentage !== -1 && (
-                        <div 
-                            className={`p-4 rounded-xl border-2 mb-4 animate-in fade-in slide-in-from-top duration-300 ${
-                                aiDetectionResult.ai_percentage > 70 ? 'bg-red-50 border-red-300' :
-                                aiDetectionResult.ai_percentage > 30 ? 'bg-yellow-50 border-yellow-300' :
-                                'bg-green-50 border-green-300'
-                            }`}
-                        >
-                            <div className="flex items-center justify-between">
-                                <span className="text-sm font-bold text-gray-800">AI Likelihood:</span>
-                                <span className="text-xl font-extrabold">{aiDetectionResult.ai_percentage}%</span>
-                            </div>
-                            <p className="text-xs mt-2 text-gray-700">
-                                {aiDetectionResult.summary}
-                            </p>
-                        </div>
-                    )}
-
-                    <button
-                        onClick={handleAiCheck}
-                        disabled={isCheckingAi}
-                        className="w-full py-3 bg-indigo-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all active:scale-95 disabled:opacity-50"
-                    >
-                        {isCheckingAi ? <Loader2 className="animate-spin" size={16} /> : <Code size={16} />}
-                        {isCheckingAi ? 'Analyzing Content...' : 'Check Submission for AI Content'}
-                    </button>
-                    <p className="text-[10px] text-gray-400 mt-1 text-center">Simulated check based on task context.</p>
-                </div>
-                
-                <div>
-                   <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-                     <UploadCloud size={16} className="text-blue-500" /> Submit Work
-                   </h3>
-                   
-                   <div className="space-y-4">
-                     <textarea 
-                       value={notes}
-                       onChange={(e) => setNotes(e.target.value)}
-                       placeholder="Add notes about your progress for the leader to see..."
-                       className="w-full bg-gray-50 p-4 rounded-xl text-sm text-gray-600 min-h-[80px] focus:outline-none focus:ring-2 focus:ring-blue-100"
-                     />
-                     <button
-                         onClick={() => { setNotes(''); }}
-                         disabled={!notes}
-                         className="w-full py-3 bg-gray-200 text-gray-700 rounded-xl text-xs font-bold flex items-center justify-center gap-2 hover:bg-gray-300 transition-all disabled:opacity-50"
-                     >
-                         <Save size={16} /> Save Notes
-                     </button>
-
-                     <div className="text-sm font-bold text-gray-800 pt-2 border-t border-gray-100">Files Uploaded:</div>
-                     <div className="flex flex-col gap-3">
-                       {task.attachments.length === 0 && <p className="text-xs text-gray-400 text-center">No files submitted yet.</p>}
-                       {task.attachments.map((file, idx) => (
-                         <div key={idx} className="flex items-center justify-between p-3 bg-blue-50 border border-blue-100 rounded-lg">
-                            <div className="flex items-center gap-3">
-                              <File size={18} className="text-blue-500" />
-                              <div>
-                                <div className="text-xs font-bold text-blue-900">{file.name}</div>
-                                <div className="text-[10px] text-blue-400">{file.size}</div>
-                              </div>
-                            </div>
-                            <CheckSquare size={14} className="text-blue-500" />
-                         </div>
-                       ))}
-                     </div>
-
-                     <button 
-                       onClick={handleUpload}
-                       disabled={isUploading}
-                       className="w-full py-3 border-2 border-dashed border-gray-200 rounded-xl text-gray-400 text-xs font-bold flex items-center justify-center gap-2 hover:bg-gray-50 hover:border-gray-300 transition-all"
-                     >
-                       {isUploading ? <Loader2 className="animate-spin" size={16} /> : <Paperclip size={16} />}
-                       {isUploading ? 'Uploading (Simulated)...' : 'Simulate File Upload'}
-                     </button>
-                   </div>
-                </div>
-
-              </div>
-            </div>
-          );
-        };
-
-        const TasksView = ({ tasks, onNewTask, onSelectTask, projectMembers }) => {
-          return (
-            <div className="p-4 pb-24 space-y-4 animate-in fade-in duration-500">
-              <div className="flex justify-between items-center mb-2">
-                <h2 className="text-lg font-bold text-gray-800">My Tasks <span className="text-gray-400 text-sm font-normal ml-2">({tasks.length})</span></h2>
-                <button 
-                  onClick={onNewTask}
-                  className="bg-blue-50 text-blue-600 px-4 py-2 rounded-full text-xs font-bold hover:bg-blue-100 transition-colors flex items-center gap-1"
-                >
-                  <Plus size={14} /> New Task
-                </button>
-              </div>
-              
-              <div className="space-y-3">
-                {tasks.length === 0 ? (
-                  <div className="text-center py-12 text-gray-400 text-sm">No active tasks.</div>
-                ) : (
-                  tasks.map((task) => (
-                    <button 
-                      key={task.id} 
-                      onClick={() => onSelectTask(task)}
-                      className="w-full bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col gap-3 group active:scale-[0.99] transition-transform text-left"
-                    >
-                      <div className="flex items-start justify-between w-full">
-                        <div className="flex items-start gap-3">
-                          <div className={`mt-1 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${task.status === 'Done' ? 'bg-green-100 border-green-500' : 'border-gray-300 group-hover:border-blue-400'}`}>
-                            {task.status === 'Done' && <div className="w-2.5 h-2.5 bg-green-500 rounded-full" />}
-                          </div>
-                          <div>
-                            <h4 className={`text-sm font-bold ${task.status === 'Done' ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{task.title}</h4>
-                            <div className="flex gap-2 mt-1">
-                              <span className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded">@{task.assignedTo}</span>
-                              <span className="text-xs text-gray-400 flex items-center gap-1">
-                                  <Calendar size={12}/> {formatDateForDisplay(task.due) || 'No Deadline'}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <ChevronRight size={16} className="text-gray-300" />
-                      </div>
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
-          );
-        };
-
-        const TimerView = () => {
-          const [seconds, setSeconds] = useState(25 * 60);
-          const [isActive, setIsActive] = useState(false);
-
-          useEffect(() => {
-            let interval = null;
-            if (isActive && seconds > 0) {
-              interval = setInterval(() => {
-                setSeconds(seconds => seconds - 1);
-              }, 1000);
-            } else if (seconds === 0) {
-              setIsActive(false);
-            }
-            return () => clearInterval(interval);
-          }, [isActive, seconds]);
-
-          const toggleTimer = () => setIsActive(!isActive);
-          const resetTimer = () => {
-            setIsActive(false);
-            setSeconds(25 * 60);
-          };
-
-          const formatTime = (secs) => {
-            const mins = Math.floor(secs / 60);
-            const remainingSecs = secs % 60;
-            return `${mins}:${remainingSecs < 10 ? '0' : ''}${remainingSecs}`;
-          };
-
-          return (
-            <div className="p-8 pb-24 flex flex-col items-center justify-center h-full min-h-[60vh] animate-in fade-in duration-500">
-              <div className="bg-white rounded-full w-64 h-64 flex items-center justify-center shadow-lg border-4 border-blue-50 mb-8 relative">
-                <span className="text-6xl font-mono font-bold text-blue-900 tracking-tighter">
-                  {formatTime(seconds)}
-                </span>
-                <div className="absolute bottom-12 text-gray-400 text-sm font-medium">FOCUS</div>
-              </div>
-              
-              <div className="flex gap-6">
-                <button 
-                  onClick={toggleTimer}
-                  className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center text-white shadow-lg hover:bg-blue-700 transition-colors active:scale-95"
-                >
-                  {isActive ? <Pause fill="currentColor" /> : <Play fill="currentColor" className="ml-1" />}
-                </button>
-                <button 
-                  onClick={resetTimer}
-                  className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center text-gray-600 shadow hover:bg-gray-300 transition-colors active:scale-95"
-                >
-                  <RotateCcw size={20} />
-                </button>
-              </div>
-              <p className="mt-8 text-gray-500 text-sm">Stay focused for 25 minutes</p>
-            </div>
-          );
-        };
-
-        // --- Main App Component ---
-        const App = () => {
-          const [activeTab, setActiveTab] = useState('tasks');
-          
-          const [showNewTaskScreen, setShowNewTaskScreen] = useState(false);
-          const [showNewProjectScreen, setShowNewProjectScreen] = useState(false);
-          const [showProjectsList, setShowProjectsList] = useState(false);
-          const [selectedTask, setSelectedTask] = useState(null);
-          
-          const [projects, setProjects] = useState(INITIAL_PROJECTS);
-          const [activeProjectId, setActiveProjectId] = useState(INITIAL_PROJECTS[0].id);
-
-          const activeProject = projects.find(p => p.id === activeProjectId) || projects[0];
-
-          const handleAddTask = (title, assignee, description, deadline) => {
-            const newTask = {
-              id: Date.now(),
-              title: title,
-              description: description || "No description provided.",
-              assignedTo: assignee,
-              status: 'Pending',
-              due: deadline || '',
-              attachments: []
-            };
-            
-            setProjects(prevProjects => prevProjects.map(p => {
-              if (p.id === activeProjectId) {
-                return { ...p, tasks: [newTask, ...p.tasks] };
-              }
-              return p;
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const tasksList = snapshot.docs.map(doc => ({
+                id: doc.id,
+                ...doc.data()
             }));
+            setTasks(tasksList);
+            setIsLoading(false);
+        }, (error) => {
+            console.error("Error fetching tasks: ", error);
+            setIsLoading(false);
+        });
 
-            setShowNewTaskScreen(false);
-            setActiveTab('tasks');
-          };
+        return () => unsubscribe();
+    }, [db, userId]);
 
-          const handleUpdateTask = (taskId, updates) => {
-              setProjects(prevProjects => prevProjects.map(p => {
-                if (p.id === activeProjectId) {
-                    const updatedTasks = p.tasks.map(t => t.id === taskId ? { ...t, ...updates } : t);
-                    return { ...p, tasks: updatedTasks };
-                }
-                return p;
-              }));
-              if (selectedTask && selectedTask.id === taskId) {
-                  setSelectedTask(prev => ({ ...prev, ...updates }));
-              }
-          };
+    const addTask = async (e) => {
+        e.preventDefault();
+        if (!newTaskTitle.trim() || !db || !userId) return;
+        try {
+            await addDoc(collection(db, `artifacts/${appId}/users/${userId}/tasks`), {
+                title: newTaskTitle.trim(),
+                isComplete: false,
+                createdAt: serverTimestamp(),
+                userId: userId,
+                dueDate: null
+            });
+            setNewTaskTitle('');
+        } catch (error) {
+            console.error("Error adding task: ", error);
+        }
+    };
 
-          const handleDeleteTask = (taskId) => {
-              setProjects(prevProjects => prevProjects.map(p => {
-                if (p.id === activeProjectId) {
-                    return { ...p, tasks: p.tasks.filter(t => t.id !== taskId) };
-                }
-                return p;
-              }));
-              setSelectedTask(null);
-          };
-
-          const handleCreateProject = (title, generatedTasks, selectedMembers) => {
-              const newProject = {
-                id: `proj_${Date.now()}`,
-                title: title,
-                members: selectedMembers,
-                tasks: generatedTasks.map((t, i) => ({
-                    id: Date.now() + i,
-                    title: t.title,
-                    assignedTo: t.assignedTo || 'Unassigned',
-                    description: t.description || 'AI generated task.',
-                    status: 'Pending',
-                    due: getISODate(new Date(new Date().setDate(new Date().getDate() + 7 + i))), 
-                    attachments: []
-                }))
-              };
-
-              setProjects([...projects, newProject]);
-              setActiveProjectId(newProject.id);
-              setShowNewProjectScreen(false);
-              setShowProjectsList(false);
-              setActiveTab('tasks');
-          };
-
-          const handleSwitchProject = (projectId) => {
-            setActiveProjectId(projectId);
-            setShowProjectsList(false);
-            setActiveTab('tasks');
-          };
-
-          const openProjectCreation = () => {
-            setShowProjectsList(false);
-            setShowNewProjectScreen(true);
-          };
-
-          // --- Render Full Screen Modals ---
-
-          if (showNewProjectScreen) {
-              return (
-                <div className="w-full max-w-md bg-white min-h-screen shadow-2xl relative">
-                    <NewProjectView 
-                        onBack={() => setShowNewProjectScreen(false)}
-                        onCreateProject={handleCreateProject}
-                    />
-                </div>
-              );
-          }
-
-          if (showProjectsList) {
-            return (
-              <div className="w-full max-w-md bg-white min-h-screen shadow-2xl relative">
-                  <ProjectsListView 
-                      projects={projects}
-                      onSelectProject={handleSwitchProject}
-                      onCreateNew={openProjectCreation}
-                  />
-                   <div className="p-6 pb-safe border-t border-gray-100 bg-white">
-                    <button 
-                      onClick={() => setShowProjectsList(false)}
-                      className="w-full py-4 bg-gray-100 text-gray-600 rounded-xl font-bold active:scale-[0.99] transition-all"
-                    >
-                      Back to Dashboard
-                    </button>
-                  </div>
-              </div>
-            );
-          }
-
-          if (showNewTaskScreen) {
-            return (
-              <div className="w-full max-w-md bg-white min-h-screen shadow-2xl relative">
-                 <SimpleNewTaskView 
-                  onBack={() => setShowNewTaskScreen(false)} 
-                  onAddTask={handleAddTask} 
-                  projectMembers={activeProject.members}
-                />
-              </div>
-            );
-          }
-
-          if (selectedTask) {
-              return (
-                <div className="w-full max-w-md bg-white min-h-screen shadow-2xl relative">
-                    <TaskDetailView 
-                       task={selectedTask}
-                       onBack={() => setSelectedTask(null)}
-                       onUpdateTask={handleUpdateTask}
-                       onDeleteTask={handleDeleteTask}
-                       projectMembers={activeProject.members}
-                    />
-                </div>
-              );
-          }
-
-          // --- Main View ---
-          return (
-            <div className="w-full max-w-md bg-gray-50 min-h-screen shadow-2xl relative flex flex-col">
-              
-              <header className="bg-blue-900 text-white px-6 pt-12 pb-8 rounded-b-[30px] shadow-lg relative z-10">
-                <div className="flex justify-between items-start mb-4">
-                  <Menu className="text-blue-200" size={24} />
-                  <div className="flex gap-4">
-                     <Bell className="text-blue-200" size={24} />
-                     <div className="w-8 h-8 bg-blue-700 rounded-full flex items-center justify-center text-xs font-bold border-2 border-blue-400">
-                       JM
-                     </div>
-                  </div>
-                </div>
-                
-                <div className="flex justify-between items-end">
-                  <div>
-                      <h1 className="text-xs font-bold text-blue-300 uppercase tracking-wider mb-1">ProjectPulse</h1>
-                      <h2 className="text-2xl font-bold leading-tight max-w-[200px] truncate">{activeProject.title}</h2>
-                  </div>
-                  <button 
-                      onClick={() => setShowProjectsList(true)}
-                      className="bg-blue-800 hover:bg-blue-700 text-blue-100 text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1 transition-colors border border-blue-700"
-                  >
-                      <Briefcase size={10} /> My Projects
-                  </button>
-                </div>
-              </header>
-
-              <main className="flex-1 overflow-y-auto bg-gray-50">
-                {activeTab === 'analytics' && <AnalyticsView project={activeProject} />}
-                {activeTab === 'tasks' && <TasksView tasks={activeProject.tasks} onNewTask={() => setShowNewTaskScreen(true)} onSelectTask={setSelectedTask} projectMembers={activeProject.members} />}
-                {activeTab === 'timer' && <TimerView />}
-              </main>
-
-              <nav className="bg-white border-t border-gray-200 sticky bottom-0 w-full z-20 pb-safe">
-                <div className="flex justify-around items-center h-16">
-                  
-                  <button 
-                    onClick={() => setActiveTab('tasks')}
-                    className={`flex flex-col items-center gap-1 w-1/3 ${activeTab === 'tasks' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
-                  >
-                    <CheckSquare size={20} strokeWidth={activeTab === 'tasks' ? 2.5 : 2} />
-                    <span className="text-[10px] font-medium">Active Tasks</span>
-                  </button>
-
-                  <button 
-                    onClick={() => setActiveTab('analytics')}
-                    className={`flex flex-col items-center gap-1 w-1/3 ${activeTab === 'analytics' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
-                  >
-                    <LayoutDashboard size={20} strokeWidth={activeTab === 'analytics' ? 2.5 : 2} />
-                    <span className="text-[10px] font-medium">Analytics</span>
-                  </button>
-
-                  <button 
-                    onClick={() => setActiveTab('timer')}
-                    className={`flex flex-col items-center gap-1 w-1/3 ${activeTab === 'timer' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
-                  >
-                    <Timer size={20} strokeWidth={activeTab === 'timer' ? 2.5 : 2} />
-                    <span className="text-[10px] font-medium">Focus Timer</span>
-                  </button>
-
-                </div>
-                <div className="h-4 w-full bg-white"></div>
-              </nav>
-
+    if (isLoading) {
+        return (
+            <div className="text-center p-8 text-gray-500 flex flex-col items-center">
+                <Loader2 className="animate-spin inline-block mr-2 text-blue-500" size={24} /> Loading tasks...
             </div>
-          );
+        );
+    }
+
+    const activeTasks = tasks.filter(t => !t.isComplete);
+    const completedTasks = tasks.filter(t => t.isComplete);
+
+    return (
+        <div className="p-4 sm:p-6 space-y-6">
+            <form onSubmit={addTask} className="flex space-x-2">
+                <input
+                    type="text"
+                    value={newTaskTitle}
+                    onChange={(e) => setNewTaskTitle(e.target.value)}
+                    placeholder="Add a new task..."
+                    className="flex-1 p-3 border border-gray-300 rounded-xl focus:ring-blue-500 focus:border-blue-500 text-sm shadow-sm"
+                    aria-label="New task title"
+                />
+                <button 
+                    type="submit" 
+                    className="bg-blue-600 text-white p-3 rounded-xl shadow-md hover:bg-blue-700 transition duration-150 active:scale-95 flex items-center justify-center w-12 h-12"
+                    aria-label="Add task"
+                >
+                    <Plus size={20} />
+                </button>
+            </form>
+
+            <section>
+                <h2 className="text-lg font-semibold text-gray-800 mb-3 flex items-center">
+                    <CheckSquare size={18} className="mr-2 text-blue-500" /> Active Tasks ({activeTasks.length})
+                </h2>
+                {activeTasks.length === 0 ? (
+                    <p className="text-gray-500 text-sm p-4 bg-white rounded-xl text-center shadow-inner border border-gray-100">
+                        All done for now! Time to focus.
+                    </p>
+                ) : (
+                    <div className="space-y-3">
+                        {activeTasks.map(task => <TaskItem key={task.id} task={task} db={db} userId={userId} />)}
+                    </div>
+                )}
+            </section>
+
+            <section>
+                <h2 className="text-lg font-semibold text-gray-800 mb-3 mt-6 flex items-center">
+                    <CheckSquare size={18} className="mr-2 text-green-500" /> Completed Tasks ({completedTasks.length})
+                </h2>
+                {completedTasks.length > 0 && (
+                    <div className="space-y-3">
+                        {completedTasks.map(task => <TaskItem key={task.id} task={task} db={db} userId={userId} />)}
+                    </div>
+                )}
+            </section>
+        </div>
+    );
+};
+
+// --- Analytics Component ---
+const AnalyticsTab = () => {
+    // Mock analytics data
+    const mockData = [
+        { metric: 'Tasks Completed (30 days)', value: 42, icon: CheckSquare, color: 'text-green-500' },
+        { metric: 'Average Focus Time (min)', value: 55, icon: Timer, color: 'text-blue-500' },
+        { metric: 'Productivity Score', value: 87, icon: TrendingUp, color: 'text-purple-500' },
+    ];
+
+    return (
+        <div className="p-4 sm:p-6 space-y-6">
+            <h1 className="text-2xl font-bold text-gray-800 mb-4 flex items-center">
+                <BarChart2 size={24} className="mr-2 text-blue-600" /> Productivity Overview
+            </h1>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {mockData.map((item, index) => (
+                    <div key={index} className="bg-white p-5 rounded-xl shadow-lg border-t-4 border-blue-500/80 transition-shadow hover:shadow-xl">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-semibold uppercase text-gray-500">{item.metric}</span>
+                            <item.icon size={20} className={item.color} />
+                        </div>
+                        <p className="text-3xl font-extrabold text-gray-900">{item.value}</p>
+                    </div>
+                ))}
+            </div>
+
+            <div className="bg-white p-5 rounded-xl shadow-lg">
+                <h2 className="text-lg font-semibold text-gray-800 mb-3">Weekly Task Trend (Mock)</h2>
+                {/* Placeholder for a chart visualization */}
+                <div className="h-48 flex justify-around items-end p-4 border-b border-l border-gray-200">
+                    {[15, 25, 30, 18, 40, 35, 22].map((value, i) => (
+                        <div key={i} className="flex flex-col items-center">
+                            <div 
+                                style={{ height: `${value * 1.5}px` }} 
+                                className="w-6 bg-blue-400 rounded-t-lg transition-all duration-300 hover:bg-blue-600 relative cursor-pointer"
+                            >
+                                <span className="absolute -top-6 text-xs font-medium text-gray-600">{value}</span>
+                            </div>
+                            <span className="text-xs mt-1 text-gray-500">{['M', 'T', 'W', 'T', 'F', 'S', 'S'][i]}</span>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+// --- Focus Timer Component ---
+const TimerTab = () => {
+    const [minutes, setMinutes] = useState(25);
+    const [seconds, setSeconds] = useState(0);
+    const [isActive, setIsActive] = useState(false);
+    const [initialTime, setInitialTime] = useState(25);
+    const [message, setMessage] = useState('');
+
+    const resetTimer = (newTime = initialTime) => {
+        setIsActive(false);
+        setMinutes(newTime);
+        setSeconds(0);
+        setInitialTime(newTime);
+        setMessage('');
+    };
+
+    const toggleTimer = () => {
+        setIsActive(!isActive);
+        setMessage('');
+    };
+
+    useEffect(() => {
+        let interval = null;
+        if (isActive) {
+            interval = setInterval(() => {
+                if (seconds > 0) {
+                    setSeconds(s => s - 1);
+                } else if (minutes > 0) {
+                    setMinutes(m => m - 1);
+                    setSeconds(59);
+                } else {
+                    // Timer finished
+                    setIsActive(false);
+                    setMessage("Time's up! Take a break.");
+                    
+                    // Reset for next session
+                    setTimeout(() => resetTimer(initialTime), 1000);
+                }
+            }, 1000);
+        } else if (!isActive && interval) {
+            clearInterval(interval);
+        }
+        return () => clearInterval(interval);
+    }, [isActive, minutes, seconds, initialTime]);
+
+    const timeString = `${minutes < 10 ? '0' + minutes : minutes}:${seconds < 10 ? '0' + seconds : seconds}`;
+    const totalSeconds = initialTime * 60;
+    const currentSeconds = minutes * 60 + seconds;
+    const progress = (totalSeconds - currentSeconds) / totalSeconds;
+    
+    return (
+        <div className="p-4 sm:p-6 flex flex-col items-center justify-center min-h-[calc(100vh-140px)]">
+            <div className="relative mb-8 w-64 h-64 flex items-center justify-center">
+                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
+                    {/* Background Circle */}
+                    <circle 
+                        className="text-gray-200"
+                        strokeWidth="6" 
+                        stroke="currentColor" 
+                        fill="transparent"
+                        r="45" 
+                        cx="50" 
+                        cy="50" 
+                    />
+                    {/* Progress Circle */}
+                    <circle 
+                        className={`transition-all duration-1000 ${isActive ? 'text-blue-500' : 'text-gray-400'}`}
+                        strokeWidth="6" 
+                        strokeDasharray={2 * Math.PI * 45}
+                        strokeDashoffset={2 * Math.PI * 45 * (1 - progress)}
+                        strokeLinecap="round"
+                        stroke="currentColor" 
+                        fill="transparent"
+                        r="45" 
+                        cx="50" 
+                        cy="50" 
+                    />
+                </svg>
+                <div className="absolute flex flex-col items-center">
+                    <Clock size={32} className="text-gray-500 mb-2"/>
+                    <span className="text-5xl font-extrabold text-gray-800">{timeString}</span>
+                </div>
+            </div>
+
+            {message && (
+                <div className="bg-yellow-100 text-yellow-800 p-3 rounded-xl mb-4 text-center font-medium shadow-md transition-opacity duration-300">
+                    {message}
+                </div>
+            )}
+            
+            <div className="flex space-x-4 mb-8">
+                <button 
+                    onClick={toggleTimer}
+                    className={`px-6 py-3 rounded-full font-bold text-white shadow-lg transition duration-150 active:scale-95 ${isActive ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-600 hover:bg-blue-700'}`}
+                >
+                    {isActive ? 'Pause' : (minutes === initialTime && seconds === 0 && initialTime !== 0) ? 'Start Focus' : 'Resume'}
+                </button>
+                <button 
+                    onClick={() => resetTimer(initialTime)}
+                    className="px-6 py-3 rounded-full font-bold text-gray-700 bg-gray-200 shadow-lg hover:bg-gray-300 transition duration-150 active:scale-95"
+                >
+                    Reset
+                </button>
+            </div>
+
+            <div className="flex space-x-3 text-sm">
+                {[15, 25, 45].map(time => (
+                    <button 
+                        key={time}
+                        onClick={() => resetTimer(time)}
+                        className={`px-3 py-1 rounded-full border transition duration-150 active:scale-95 ${initialTime === time ? 'bg-blue-100 border-blue-500 text-blue-700 font-semibold shadow-inner' : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-100'}`}
+                    >
+                        {time} min
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+
+// --- Main App Component ---
+export default function App() {
+    const [activeTab, setActiveTab] = useState('tasks');
+    const [db, setDb] = useState(null);
+    const [userId, setUserId] = useState(null);
+    const [isAuthReady, setIsAuthReady] = useState(false);
+    
+    // 1. Firebase Initialization and Authentication
+    useEffect(() => {
+        // In a Vite/React environment, we check for window context variables
+        if (Object.keys(firebaseConfig).length === 0) {
+            console.warn("Firebase config missing. Running in mock mode.");
+            setIsAuthReady(true);
+            setUserId(crypto.randomUUID()); // Mock userId
+            return;
         }
 
-        ReactDOM.render(<App />, document.getElementById('root'));
-    </script>
-</body>
-</html>
+        try {
+            const app = initializeApp(firebaseConfig);
+            const firestore = getFirestore(app);
+            const authInstance = getAuth(app);
+            
+            setDb(firestore);
+            setLogLevel('debug');
+
+            // Auth listener to handle user state
+            const unsubscribe = onAuthStateChanged(authInstance, (user) => {
+                if (user) {
+                    setUserId(user.uid);
+                } else {
+                    // Sign in anonymously if user is logged out
+                    signInAnonymously(authInstance).then((result) => {
+                        setUserId(result.user.uid);
+                    }).catch((error) => {
+                        console.error("Anonymous sign-in failed:", error);
+                    });
+                }
+                setIsAuthReady(true);
+            });
+
+            // Custom Token Sign-In (if token exists)
+            if (initialAuthToken) {
+                signInWithCustomToken(authInstance, initialAuthToken).then((result) => {
+                    console.log("Signed in with custom token:", result.user.uid);
+                }).catch((error) => {
+                    console.error("Custom token sign-in failed. Falling back to anonymous:", error);
+                });
+            }
+            
+            return () => unsubscribe();
+        } catch (e) {
+            console.error("Failed to initialize Firebase:", e);
+            setIsAuthReady(true);
+            setUserId('initialization-error');
+        }
+    }, []);
+
+    const renderContent = () => {
+        if (!isAuthReady) {
+            return (
+                <div className="p-8 text-center text-gray-500 flex flex-col items-center justify-center min-h-64">
+                    <Loader2 className="animate-spin text-blue-500 mb-3" size={32} />
+                    <p>Connecting to secure services...</p>
+                </div>
+            );
+        }
+
+        if (!db || !userId) {
+             return (
+                <div className="p-8 text-center text-red-500 flex flex-col items-center justify-center min-h-64">
+                    <p>Authentication Error. Cannot load data.</p>
+                </div>
+            );
+        }
+
+        switch (activeTab) {
+            case 'tasks':
+                return <TasksTab db={db} userId={userId} />;
+            case 'analytics':
+                return <AnalyticsTab />;
+            case 'timer':
+                return <TimerTab />;
+            default:
+                return null;
+        }
+    };
+
+    return (
+        <div className="app-container max-w-lg mx-auto bg-gray-50 min-h-screen shadow-2xl flex flex-col">
+            {/* Header */}
+            <header className="p-4 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white z-10 shadow-sm">
+                <div className="flex items-center">
+                    <LayoutDashboard size={24} className="text-blue-600 mr-2" />
+                    <h1 className="text-xl font-bold text-gray-900">Project Pulse</h1>
+                </div>
+                <div className="text-xs text-gray-500 flex items-center bg-gray-100 p-1.5 rounded-full px-3">
+                    <User size={16} className="mr-1 text-gray-400" />
+                    <span className="font-mono text-gray-700 truncate max-w-[100px]">{userId || 'Loading...'}</span>
+                </div>
+            </header>
+            
+            {/* Main Content Area */}
+            <main className="flex-grow overflow-y-auto">
+                {renderContent()}
+            </main>
+
+            {/* Footer Navigation (Mobile-focused) */}
+            <nav className="sticky bottom-0 bg-white border-t border-gray-200 shadow-2xl">
+                <div className="flex justify-around items-center h-16 w-full max-w-lg mx-auto pb-safe">
+                    
+                    {/* Active Tasks Button */}
+                    <button 
+                        onClick={() => setActiveTab('tasks')}
+                        className={`flex flex-col items-center gap-1 w-1/3 p-2 transition duration-150 rounded-lg ${activeTab === 'tasks' ? 'text-blue-600' : 'text-gray-500 hover:text-blue-500'}`}
+                    >
+                        <CheckSquare size={20} strokeWidth={activeTab === 'tasks' ? 2.5 : 2} />
+                        <span className="text-[10px] font-medium">Tasks</span>
+                    </button>
+
+                    {/* Analytics Button */}
+                    <button 
+                        onClick={() => setActiveTab('analytics')}
+                        className={`flex flex-col items-center gap-1 w-1/3 p-2 transition duration-150 rounded-lg ${activeTab === 'analytics' ? 'text-blue-600' : 'text-gray-500 hover:text-blue-500'}`}
+                    >
+                        <BarChart2 size={20} strokeWidth={activeTab === 'analytics' ? 2.5 : 2} />
+                        <span className="text-[10px] font-medium">Analytics</span>
+                    </button>
+
+                    {/* Focus Timer Button */}
+                    <button 
+                        onClick={() => setActiveTab('timer')}
+                        className={`flex flex-col items-center gap-1 w-1/3 p-2 transition duration-150 rounded-lg ${activeTab === 'timer' ? 'text-blue-600' : 'text-gray-500 hover:text-blue-500'}`}
+                    >
+                        <Timer size={20} strokeWidth={activeTab === 'timer' ? 2.5 : 2} />
+                        <span className="text-[10px] font-medium">Focus</span>
+                    </button>
+
+                </div>
+            </nav>
+        </div>
+    );
+}
