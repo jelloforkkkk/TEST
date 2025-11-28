@@ -490,7 +490,7 @@
             const laggingMember = projectMembersWithScores.find(m => m.completedCount === 0);
             
             const prompt = `
-              You are a senior project manager for the project "${project.title}". Analyze this team status:
+              You are a teacher managing the project "${project.title}". Analyze this team status:
               - Overall Progress: ${progress}%
               - Team Performance: ${JSON.stringify(projectMembersWithScores.map(m => ({name: m.name, completedTasks: m.completedCount, contributionShare: m.score})))}
               
